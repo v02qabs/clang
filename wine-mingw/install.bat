@@ -1,0 +1,1 @@
+copy wine-mingw.exe c:\windows\.
