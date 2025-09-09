@@ -1,0 +1,6 @@
+TEXT:
+今日は仕事ー。
+頑張るぞー。
+写真は、今日の朝食。
+
+IMAGE:/root/git/clang/c/gtk+-3.0/DiaryApp/20250910_070402.jpg
