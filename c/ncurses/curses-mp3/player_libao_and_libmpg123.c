@@ -7,6 +7,7 @@
 #include <ncurses.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <locale.h> 
 
 #define BITS 8
 #define MAX_FILES 1024
@@ -103,6 +104,7 @@ int main(int argc, char *argv[]) {
         printf("使い方: %s <ディレクトリ>\n", argv[0]);
         return 1;
     }
+      setlocale(LC_ALL, "");
 
     load_files(argv[1]);
     if (file_count == 0) {
