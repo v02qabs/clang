@@ -1,0 +1,354 @@
+Okay, let's create a Gemini TUI (Text User Interface) app using Textual that allows you to chat with Gemini and save the AI's responses to a file.
+
+**Features:**
+
+1.  **Chat with Gemini:** Send prompts and receive responses.
+2.  **Display History:** See your prompts and Gemini's replies in a scrollable log.
+3.  **Save Last Response:** Press `Ctrl+S` to save the last Gemini response to a file.
+4.  **Quit:** Press `Ctrl+Q` to exit the app.
+
+---
+
+### Prerequisites
+
+Before you start, make sure you have:
+
+1.  **Python 3.7+**
+2.  **Google API Key for Gemini:** Get one from the [Google AI Studio](https://makersuite.google.com/text/create) (ensure you enable the Gemini API for your project).
+3.  **Install necessary libraries:**
+
+    ```bash
+    pip install textual google-generativeai
+    ```
+
+---
+
+### Step 1: Set up your API Key
+
+It's best practice not to hardcode your API key. Set it as an environment variable:
+
+**Linux/macOS:**
+
+```bash
+export GOOGLE_API_KEY='YOUR_API_KEY_HERE'
+```
+
+**Windows (Command Prompt):**
+
+```cmd
+set GOOGLE_API_KEY='YOUR_API_KEY_HERE'
+```
+
+**Windows (PowerShell):**
+
+```powershell
+$env:GOOGLE_API_KEY='YOUR_API_KEY_HERE'
+```
+
+Replace `'YOUR_API_KEY_HERE'` with your actual API key.
+
+---
+
+### Step 2: Create the TUI App (`gemini_tui.py`)
+
+```python
+import os
+import google.generativeai as genai
+from datetime import datetime
+
+from textual.app import App, ComposeResult
+from textual.containers import Container
+from textual.widgets import Header, Footer, Input, Button, RichLog
+from textual.binding import Binding
+from textual.reactive import reactive
+
+class GeminiTUI(App):
+    """A Textual app to chat with Google Gemini and save responses."""
+
+    CSS = """
+    Screen {
+        background: #1e1e1e;
+    }
+
+    Header {
+        dock: top;
+        background: #3a0050; /* Dark purple */
+        color: white;
+        text-align: center;
+        height: 3;
+    }
+
+    Footer {
+        dock: bottom;
+        background: #3a0050; /* Dark purple */
+        color: white;
+        height: 2;
+    }
+
+    Container {
+        layout: vertical;
+        padding: 1;
+    }
+
+    #chat_log {
+        height: 1fr; /* Takes up all available space */
+        border: solid #5a0080; /* Lighter purple border */
+        margin-bottom: 1;
+        background: #282828;
+    }
+
+    #input_area {
+        dock: bottom;
+        layout: horizontal;
+        height: 3;
+    }
+
+    #prompt_input {
+        width: 1fr; /* Takes up most of the input area */
+        height: 100%;
+        border: solid #5a0080;
+        background: #383838;
+        color: white;
+    }
+
+    #send_button {
+        width: 12;
+        margin-left: 1;
+        background: #5a0080; /* Lighter purple button */
+        color: white;
+        border: solid #7a00a0;
+    }
+
+    #send_button:hover {
+        background: #7a00a0;
+    }
+
+    .error {
+        color: red;
+    }
+
+    .info {
+        color: yellow;
+    }
+    """
+
+    BINDINGS = [
+        Binding("ctrl+s", "save_response", "Save Last Response", show=True, key_display="Ctrl+S"),
+        Binding("ctrl+q", "quit", "Quit", show=True, key_display="Ctrl+Q"),
+    ]
+
+    # Reactive variable to store the last AI response
+    last_ai_response: reactive[str | None] = reactive(None)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.model = None
+        self._initialize_gemini()
+
+    def _initialize_gemini(self):
+        """Initializes the Gemini model."""
+        api_key = os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            self.query_one(RichLog).write("[bold red]ERROR:[/bold red] GOOGLE_API_KEY environment variable not set.")
+            self.query_one(RichLog).write("Please set it before running the app.")
+            self.exit() # Exit if API key is not found
+            return
+
+        genai.configure(api_key=api_key)
+        try:
+            self.model = genai.GenerativeModel("gemini-pro")
+            # Optionally test a small call to ensure it works
+            # self.model.generate_content("hello", safety_settings={'HARASSMENT':'block_none'})
+        except Exception as e:
+            self.query_one(RichLog).write(f"[bold red]ERROR connecting to Gemini:[/bold red] {e}")
+            self.query_one(RichLog).write("Please check your API key and internet connection.")
+            self.exit()
+
+    def compose(self) -u003e ComposeResult:
+        """Create child widgets for the app."""
+        yield Header()
+        yield Footer()
+        with Container():
+            yield RichLog(id="chat_log", wrap=True, auto_scroll=True, markup=True)
+            with Container(id="input_area"):
+                yield Input(placeholder="Ask Gemini...", id="prompt_input")
+                yield Button("Send", id="send_button", variant="primary")
+
+    def on_mount(self) -u003e None:
+        """Called when the app is mounted."""
+        self.query_one("#prompt_input", Input).focus()
+        self.query_one(RichLog).write("[bold magenta]Welcome to Gemini TUI![/bold magenta]")
+        self.query_one(RichLog).write("Enter your prompt below and press Enter or click Send.")
+        self.query_one(RichLog).write("Press [bold yellow]Ctrl+S[/bold yellow] to save the last response.")
+        self.query_one(RichLog).write("Press [bold yellow]Ctrl+Q[/bold yellow] to quit.")
+
+
+    async def on_button_pressed(self, event: Button.Pressed) -u003e None:
+        """Event handler for the send button."""
+        if event.button.id == "send_button":
+            await self._send_prompt()
+
+    async def on_input_submitted(self, event: Input.Submitted) -u003e None:
+        """Event handler for the input field when Enter is pressed."""
+        if event.input.id == "prompt_input":
+            await self._send_prompt()
+
+    async def _send_prompt(self) -u003e None:
+        """Sends the current prompt to Gemini and displays the response."""
+        prompt_input = self.query_one("#prompt_input", Input)
+        chat_log = self.query_one(RichLog)
+        prompt = prompt_input.value.strip()
+
+        if not prompt:
+            chat_log.write("[info]Please enter a prompt.[/info]")
+            return
+
+        # Clear input and display user prompt
+        prompt_input.value = ""
+        chat_log.write(f"[bold blue]You:[/bold blue] {prompt}")
+        chat_log.write("[info]Thinking...[/info]")
+
+        try:
+            # Run the blocking Gemini API call in a worker thread
+            # This keeps the UI responsive while the API call is made
+            worker = self.run_worker(
+                lambda: self.model.generate_content(prompt),
+                name="gemini_call",
+                group="gemini_tasks",
+                thread=True,
+            )
+            
+            # Wait for the worker to complete and get the result
+            result_wrapper = await worker.wait_for_completion()
+            response = result_wrapper.result
+
+            response_text = ""
+            try:
+                # Access the 'text' attribute of the GenerationResponse object
+                response_text = response.text
+            except Exception:
+                # Handle cases where response.text might not be available (e.g., safety filters)
+                if hasattr(response, 'prompt_feedback') and response.prompt_feedback.block_reason:
+                    response_text = f"Blocked: {response.prompt_feedback.block_reason.name}"
+                else:
+                    response_text = "No text content received (possibly blocked by safety filters)."
+
+            self.last_ai_response = response_text  # Store the last response
+            chat_log.write(f"[bold green]Gemini:[/bold green] {response_text}")
+
+        except Exception as e:
+            chat_log.write(f"[bold red]Error:[/bold red] {e}")
+            self.last_ai_response = None # Clear on error
+
+        chat_log.scroll_end() # Auto-scroll to the end after response
+        prompt_input.focus()
+
+    def action_save_response(self) -u003e None:
+        """Saves the last AI response to a file."""
+        chat_log = self.query_one(RichLog)
+
+        if self.last_ai_response:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"gemini_response_{timestamp}.txt"
+            try:
+                with open(filename, "w", encoding="utf-8") as f:
+                    f.write(self.last_ai_response)
+                chat_log.write(f"[bold green]Saved to:[/bold green] {filename}")
+            except IOError as e:
+                chat_log.write(f"[bold red]Error saving file:[/bold red] {e}")
+        else:
+            chat_log.write("[info]No response to save yet.[/info]")
+
+        chat_log.scroll_end()
+
+    def action_quit(self) -u003e None:
+        """Quits the application."""
+        self.exit()
+
+
+if __name__ == "__main__":
+    app = GeminiTUI()
+    app.run()
+```
+
+---
+
+### How to Run
+
+1.  Save the code above as `gemini_tui.py`.
+2.  Make sure your `GOOGLE_API_KEY` environment variable is set.
+3.  Open your terminal or command prompt in the directory where you saved the file.
+4.  Run the app:
+
+    ```bash
+    python gemini_tui.py
+    ```
+
+---
+
+### Explanation
+
+1.  **Imports:**
+    *   `os` for environment variables.
+    *   `google.generativeai` for the Gemini API.
+    *   `datetime` for unique filenames.
+    *   `textual` components (`App`, `Container`, `Header`, `Footer`, `Input`, `Button`, `RichLog`, `Binding`, `reactive`).
+
+2.  **`GeminiTUI` Class:**
+    *   Inherits from `textual.app.App`.
+
+3.  **`CSS`:** Defines the look and feel of your TUI using Textual's CSS-like syntax.
+    *   Sets background colors, borders, and layout for the different widgets.
+
+4.  **`BINDINGS`:**
+    *   `Binding("ctrl+s", "save_response", "Save Last Response")`: Maps `Ctrl+S` to the `action_save_response` method.
+    *   `Binding("ctrl+q", "quit", "Quit")`: Maps `Ctrl+Q` to the built-in `action_quit` method.
+
+5.  **`last_ai_response: reactive[str | None] = reactive(None)`:**
+    *   A Textual `reactive` variable that will store the last full text response from Gemini. This is crucial for the saving functionality.
+
+6.  **`__init__` and `_initialize_gemini`:**
+    *   The `_initialize_gemini` method retrieves your `GOOGLE_API_KEY` from environment variables. If not found, it prints an error and exits.
+    *   It then configures the `genai` library and initializes the `gemini-pro` model. Error handling is included for connection issues.
+
+7.  **`compose()`:**
+    *   This method defines the layout of your TUI.
+    *   `Header` and `Footer` for standard app chrome.
+    *   A main `Container` holds the content.
+    *   `RichLog(id="chat_log")`: This is where the conversation history will be displayed. `wrap=True` ensures text wraps, `auto_scroll=True` keeps the latest messages in view. `markup=True` allows for rich text (bold, color).
+    *   Another `Container(id="input_area")` for the prompt input and send button.
+    *   `Input(id="prompt_input")`: Where the user types their prompt.
+    *   `Button("Send", id="send_button")`: To submit the prompt.
+
+8.  **`on_mount()`:**
+    *   Called when the app starts. It sets focus to the input field and displays a welcome message with instructions.
+
+9.  **`on_button_pressed()` and `on_input_submitted()`:**
+    *   These are Textual's event handlers. They both call `_send_prompt()` when the "Send" button is clicked or Enter is pressed in the input field.
+
+10. **`_send_prompt()` (Asynchronous with Worker):**
+    *   Retrieves the user's prompt.
+    *   Clears the input field.
+    *   Writes the user's prompt to the `RichLog`.
+    *   Displays a "Thinking..." message.
+    *   **`self.run_worker(...)`**: This is key for keeping the UI responsive. Gemini API calls are blocking. `run_worker` executes the `self.model.generate_content(prompt)` call in a separate thread. This prevents the TUI from freezing while waiting for the AI response.
+    *   `await worker.wait_for_completion()`: Waits for the background worker to finish.
+    *   Retrieves the AI's response text.
+    *   **`self.last_ai_response = response_text`**: Stores the AI's response in the reactive variable.
+    *   Displays Gemini's response in the `RichLog`.
+    *   Includes error handling for API issues or content filtering.
+    *   `chat_log.scroll_end()`: Ensures the log always shows the latest messages.
+    *   `prompt_input.focus()`: Puts the cursor back in the input field.
+
+11. **`action_save_response()`:**
+    *   This method is triggered by the `Ctrl+S` binding.
+    *   Checks if `self.last_ai_response` contains content.
+    *   Generates a unique filename using a timestamp (`gemini_response_YYYYMMDD_HHMMSS.txt`).
+    *   Opens the file in write mode (`"w"`) with `utf-8` encoding.
+    *   Writes the stored `last_ai_response` to the file.
+    *   Displays a success or error message in the `RichLog`.
+
+12. **`action_quit()`:**
+    *   Called when `Ctrl+Q` is pressed, gracefully exits the app.
+
+This application provides a user-friendly TUI for interacting with Gemini, with the essential feature of saving the generated content.
