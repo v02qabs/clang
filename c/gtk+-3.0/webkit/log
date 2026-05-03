@@ -1,0 +1,4 @@
+webview.c:14:5: error: call to undeclared function 'gtk_window_set_child'; ISO C99 and later do not support implicit function declarations [-Wimplicit-function-declaration]
+   14 |     gtk_window_set_child(GTK_WINDOW(window), GTK_WIDGET(web_view));
+      |     ^
+1 error generated.
