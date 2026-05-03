@@ -1,0 +1,17 @@
+In file included from /usr/lib/gcc/i586-alpine-linux-musl/15.2.0/include/syslimits.h:9,
+                 from /usr/lib/gcc/i586-alpine-linux-musl/15.2.0/include/limits.h:34,
+                 from /usr/lib/glib-2.0/include/glibconfig.h:11,
+                 from /usr/include/glib-2.0/glib/gtypes.h:34,
+                 from /usr/include/glib-2.0/glib/galloca.h:34,
+                 from /usr/include/glib-2.0/glib.h:32,
+                 from /usr/include/gtk-3.0/gdk/gdkconfig.h:8,
+                 from /usr/include/gtk-3.0/gdk/gdk.h:30,
+                 from /usr/include/gtk-3.0/gtk/gtk.h:30,
+                 from edit.c:1:
+/usr/lib/gcc/i586-alpine-linux-musl/15.2.0/include/limits.h:210:75: error: no include path in which to search for limits.h
+  210 | #include_next <limits.h>                /* recurse down to the real one */
+      |                                                                           ^
+/usr/include/glib-2.0/glib/gtypes.h:41:10: fatal error: time.h: No such file or directory
+   41 | #include <time.h>
+      |          ^~~~~~~~
+compilation terminated.
